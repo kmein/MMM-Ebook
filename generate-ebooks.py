@@ -4,7 +4,8 @@ import re
 import sys
 from urllib.parse import urlparse
 from lxml import etree as ET
-import urllib
+import urllib.error
+import urllib.request
 from urllib.request import urlopen
 import glob
 import shutil
@@ -23,9 +24,13 @@ CACHED_RSS_PREFIX = "rssPage"
 CACHED_RSS_PAGENO = "%04u"
 CACHED_RSS_SUFFIX = ".xml"
 
-CACHED_URL_MAP_PATH = os.path.join(CACHED_DATA, 'url_maps')
+MMM_RSS_URL = "https://www.mrmoneymustache.com/feed/?order=ASC&paged=%d"
 
-MMM_RSS_URL = "http://www.mrmoneymustache.com/feed/?order=ASC&paged=%d"
+USER_AGENT = "MMM-Ebook (+https://github.com/kmein/MMM-Ebook)"
+
+_opener = urllib.request.build_opener()
+_opener.addheaders = [("User-Agent", USER_AGENT)]
+urllib.request.install_opener(_opener)
 
 COVER_PATH = os.path.join(os.path.dirname(__file__), "Cover.png")
 
@@ -103,12 +108,13 @@ def getLatestRssDataFromMMM():
     
     while True:
         try:
-            print(MMM_RSS_URL)
-            parser = RSSParser(MMM_RSS_URL % (pageNo), pageNo)            
+            parser = RSSParser(MMM_RSS_URL % (pageNo), pageNo)
             parsers.append(parser)
             pageNo += 1
-        except IOError as e:
-            print(f'Failed to open last (end of detected RSS pages), error: {e}')
+        except urllib.error.HTTPError as e:
+            if e.code != 404:
+                raise # Do not mistake an outage for the end of the feed
+            print(f'Page {pageNo} is a 404 - end of RSS pages')
             break
             
     return parsers
@@ -156,23 +162,6 @@ def createPostsFromRss(parsers):
     return posts
     
                             
-def getCachedUrlMaps():
-    if not os.path.isdir(CACHED_DATA):
-        os.mkdir(CACHED_DATA)
-        
-    if not os.path.isfile(CACHED_URL_MAP):
-        return ({}, {})
-    
-    remoteToLocal, localToRemote = pickle.load(open(CACHED_URL_MAP, 'rb'))
-     
-    return (remoteToLocal, localToRemote)
-    
-def saveUrlMaps(remoteToLocal, localToRemote):
-    if not os.path.isdir(CACHED_DATA):
-        os.mkdir(CACHED_DATA)
-        
-    pickle.dump((remoteToLocal, localToRemote), open(CACHED_URL_MAP, 'wb'))
-    
 def rewritePostLinks(posts):
     """We do this once we have all the posts since sometimes MMM goes back
         and edits earlier posts to include a link to a later posting"""
@@ -186,7 +175,7 @@ def rewritePostLinks(posts):
 
     for post in posts:
         for url in postWebToLocalURLDictionary.keys():
-            regex = re.compile('<a\\s(.*href=\")%s(\".*)>(.*)<\/a>' % url.decode('utf-8'))
+            regex = re.compile(r'<a\s(.*href=")%s(".*)>(.*)</a>' % re.escape(url.decode('utf-8')))
             text = post.text if isinstance(post.text, str) else post.text.decode('utf-8')
             post.text = regex.sub('<a \\1' + postWebToLocalURLDictionary[url] + '\\2>\\3</a>', text)
 
@@ -203,11 +192,11 @@ def rewriteImageLinks(posts):
         text = re.sub(r'<a class=\"featured_image_link\".*</a>', "", text)
         
         tree = ET.HTML(text)
-        for image in tree.findall('.//img'):
+        for imageElement in tree.findall('.//img'):
             # Drop responsive images
-            image.attrib.pop('srcset', None)
+            imageElement.attrib.pop('srcset', None)
 
-            imageurl = image.attrib["src"]
+            imageurl = imageElement.attrib["src"]
 
             # Skip images embedded in the html
             if imageurl.startswith("data:image"):
@@ -227,10 +216,9 @@ def rewriteImageLinks(posts):
                 try:
                     urllib.request.urlretrieve(imageurl, cachedImagePath)
 
-                    # Resize images to a max width of 800px to save space
+                    # Resize images to a max width of 450px to save space
                     try:
                         image = Image.open(cachedImagePath)
-                        image.LOAD_TRUNCATED_IMAGES = True
                         if not image.width <= 600:
                             aspectRatioChange = IMG_MAX_WIDTH_PX / image.width
                             height = int(image.height * aspectRatioChange)
@@ -245,8 +233,11 @@ def rewriteImageLinks(posts):
 
             outputImageAbsolutePath = os.path.join(MEDIA, imageFilename)
             outputImageRelativePath = os.path.relpath(outputImageAbsolutePath, BOOK_DATA)
+            if not Path(cachedImagePath).exists():
+                continue # Download failed, leave the post pointing at the web copy
+
             shutil.copyfile(cachedImagePath, outputImageAbsolutePath)
-            image.attrib['src'] = outputImageRelativePath
+            imageElement.attrib['src'] = outputImageRelativePath
         post.text = ET.tostring(tree, encoding='utf8')
     
 def createBookData(posts):
@@ -254,7 +245,7 @@ def createBookData(posts):
     
     shutil.copyfile(COVER_PATH, os.path.join(BOOK_DATA, 'Cover.png'))
 
-    index = open(os.path.join(BOOK_DATA, 'index.html'), 'w')
+    index = open(os.path.join(BOOK_DATA, 'index.html'), 'w', encoding='utf-8')
     
     index.write(f'''<!DOCTYPE html>
     <html lang="en">
@@ -273,7 +264,7 @@ def createBookData(posts):
     for post in posts:
         text = post.text if isinstance(post.text, str) else post.text.decode('utf-8')
         
-        open(os.path.join(BOOK_DATA, post.localUrl), 'w').write(
+        open(os.path.join(BOOK_DATA, post.localUrl), 'w', encoding='utf-8').write(
             '<!DOCTYPE html>\n' + \
             '<html lang="en">\n' + \
                 '<head>\n' + \
