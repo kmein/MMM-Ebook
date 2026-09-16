@@ -1,20 +1,41 @@
-on: workflow_dispatch
+name: Regenerate Ebooks
+
+on:
+  schedule:
+    # Weekly, Sundays at 06:00 UTC
+    - cron: '0 6 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
 jobs:
   regenerate-ebooks:
     runs-on: ubuntu-latest
     name: Regenerate Ebooks
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
-          python-version: '3.10'
+          python-version: '3.13'
           cache: 'pip'
       - run: pip install -r requirements.txt
-      - run: sudo apt install calibre
+      - name: Install Calibre
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y calibre
+      - name: Restore scrape cache
+        uses: actions/cache@v6
+        with:
+          # Keeps us from re-scraping the whole blog (and every image) weekly
+          path: .cached
+          key: mmm-scrape-${{ github.run_id }}
+          restore-keys: mmm-scrape-
       - run: ./generate-ebooks.py
-      - run: |
+      - name: Commit updated ebooks
+        run: |
           git config user.name github-actions
           git config user.email github-actions@github.com
-          git add .
-          git commit -m "[AUTOGENERATE CI] Updated Ebooks"
+          git add Ebooks
+          git diff --staged --quiet || git commit -m "[AUTOGENERATE CI] Updated Ebooks"
           git push
