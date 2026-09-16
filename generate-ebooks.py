@@ -130,8 +130,10 @@ def getRssData():
     
     print("Parsing cached pages from disk")
     
-    # First parse our cached pages
-    for cachedPageFilePath in getCachedPostings():
+    # First parse our cached pages, all but the last: getLatestRssDataFromMMM
+    # redownloads that one because it may have grown, and parsing both copies
+    # would put its posts in the book twice.
+    for cachedPageFilePath in getCachedPostings()[:-1]:
          parsers.append(RSSParser(cachedPageFilePath)) # No page number necessary since cached
          
     parsers.extend(getLatestRssDataFromMMM())
