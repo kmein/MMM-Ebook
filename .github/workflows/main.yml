@@ -32,10 +32,30 @@ jobs:
           key: mmm-scrape-${{ github.run_id }}
           restore-keys: mmm-scrape-
       - run: ./generate-ebooks.py
-      - name: Commit updated ebooks
+      - name: Record what was published
+        # Also the repository activity that stops GitHub from disabling a
+        # scheduled workflow after 60 days of quiet - the ebook commits used
+        # to do that, and they are gone now.
         run: |
+          {
+            echo "Generated $(date -u '+%Y-%m-%d %H:%M UTC') from \
+          $(ls import_index.html_in_this_folder_in_calibre_to_create_ebook/p*.html | wc -l) posts."
+            echo
+            (cd Ebooks && sha256sum mmm.* | sed 's/  / /')
+          } > PUBLISHED.txt
           git config user.name github-actions
           git config user.email github-actions@github.com
-          git add Ebooks
-          git diff --staged --quiet || git commit -m "[AUTOGENERATE CI] Updated Ebooks"
+          git add PUBLISHED.txt
+          git diff --staged --quiet || git commit -m "[AUTOGENERATE CI] Published ebooks $(date -u '+%Y-%m-%d')"
           git push
+      - name: Publish ebooks to the rolling release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes="Every Mr. Money Mustache post, generated $(date -u '+%Y-%m-%d') from the blog's RSS feed."
+          if gh release view ebooks >/dev/null 2>&1; then
+            gh release upload ebooks Ebooks/mmm.* --clobber
+            gh release edit ebooks --notes "$notes"
+          else
+            gh release create ebooks Ebooks/mmm.* --title "Ebooks" --notes "$notes"
+          fi

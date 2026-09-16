@@ -33,6 +33,10 @@ _opener.addheaders = [("User-Agent", USER_AGENT)]
 urllib.request.install_opener(_opener)
 
 COVER_PATH = os.path.join(os.path.dirname(__file__), "Cover.png")
+EBOOKS = os.path.join(os.path.dirname(__file__), "Ebooks")
+
+BOOK_TITLE = "Financial Freedom Through Badassity"
+BOOK_AUTHOR = "Mr. Money Mustache"
 
 IMG_MAX_WIDTH_PX = 450
 ImageFile.LOAD_TRUNCATED_IMAGES = True
@@ -286,12 +290,22 @@ def createBookData(posts):
 </html>''')
 
 def generateEbooks():
+    if shutil.which("ebook-convert") is None:
+        print(f"Calibre's ebook-convert is not installed - skipping the ebooks, "
+            f"the HTML edition is in {BOOK_DATA}")
+        return
+
     print("Generating eBooks...")
 
-    subprocess.run(["ebook-convert", "import_index.html_in_this_folder_in_calibre_to_create_ebook/index.html", "Ebooks/mmm.azw3", "--title", "Financial Freedom Through Badassity", "--authors", "Mr. Money Mustache", "--pubdate", f"{date.today()}", "--cover", "Cover.png"])
-    subprocess.run(["ebook-convert", "import_index.html_in_this_folder_in_calibre_to_create_ebook/index.html", "Ebooks/mmm.epub", "--title", "Financial Freedom Through Badassity", "--authors", "Mr. Money Mustache", "--pubdate", f"{date.today()}", "--cover", "Cover.png"])
-    subprocess.run(["ebook-convert", "import_index.html_in_this_folder_in_calibre_to_create_ebook/index.html", "Ebooks/mmm.mobi", "--title", "Financial Freedom Through Badassity", "--authors", "Mr. Money Mustache", "--pubdate", f"{date.today()}", "--cover", "Cover.png"])
-    subprocess.run(["ebook-convert", "import_index.html_in_this_folder_in_calibre_to_create_ebook/index.html", "Ebooks/mmm.pdf", "--title", "Financial Freedom Through Badassity", "--authors", "Mr. Money Mustache", "--cover", "Cover.png"])
+    os.makedirs(EBOOKS, exist_ok=True)
+    index = os.path.join(BOOK_DATA, 'index.html')
+
+    for filename in ("mmm.azw3", "mmm.epub", "mmm.mobi", "mmm.pdf"):
+        command = ["ebook-convert", index, os.path.join(EBOOKS, filename),
+            "--title", BOOK_TITLE, "--authors", BOOK_AUTHOR, "--cover", COVER_PATH]
+        if not filename.endswith(".pdf"):
+            command += ["--pubdate", f"{date.today()}"]
+        subprocess.run(command, check=True) # A half-converted book must not be published
 
     print("Finished generating Ebooks")
 
