@@ -41,7 +41,7 @@ jobs:
             echo "Generated $(date -u '+%Y-%m-%d %H:%M UTC') from \
           $(ls import_index.html_in_this_folder_in_calibre_to_create_ebook/p*.html | wc -l) posts."
             echo
-            (cd Ebooks && sha256sum mmm.* | sed 's/  / /')
+            (cd Ebooks && sha256sum mmm.epub | sed 's/  / /')
           } > PUBLISHED.txt
           git config user.name github-actions
           git config user.email github-actions@github.com
@@ -54,8 +54,8 @@ jobs:
         run: |
           notes="Every Mr. Money Mustache post, generated $(date -u '+%Y-%m-%d') from the blog's RSS feed."
           if gh release view ebooks >/dev/null 2>&1; then
-            gh release upload ebooks Ebooks/mmm.* --clobber
+            gh release upload ebooks Ebooks/mmm.epub --clobber
             gh release edit ebooks --notes "$notes"
           else
-            gh release create ebooks Ebooks/mmm.* --title "Ebooks" --notes "$notes"
+            gh release create ebooks Ebooks/mmm.epub --title "Ebook" --notes "$notes"
           fi
